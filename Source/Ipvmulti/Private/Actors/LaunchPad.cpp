@@ -32,6 +32,7 @@ void ALaunchPad::OverlapLaunchPad(UPrimitiveComponent* OverlappedComponent, AAct
 	FRotator LaunchDirection =GetActorRotation();
 	LaunchDirection.Pitch += LaunchAngle;
 	FVector LaunchVelocity =LaunchDirection.Vector()*Launchforce;
+	
 	ACharacter* MyCharacter = Cast<ACharacter>(OtherActor);
 	if (MyCharacter)
 	{
