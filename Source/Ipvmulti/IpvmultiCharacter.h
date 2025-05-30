@@ -44,6 +44,10 @@ class AIpvmultiCharacter : public ACharacter
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LookAction;
+	
+	/** Fire Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* FireAction;
 
 public:
 	AIpvmultiCharacter();
@@ -130,6 +134,7 @@ protected:
 	void OnRep_CurrentHealth();
 
 	/** Response to health being updated. Called on the server immediately after modification, and on clients in response to a RepNotify*/
+	UFUNCTION(BlueprintNativeEvent, Category="Health")
 	void OnHealthUpdate();
 };
 

@@ -105,7 +105,7 @@ void AIpvmultiCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AIpvmultiCharacter::Look);
 
 		// Handle firing projectiles
-		PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AIpvmultiCharacter::StartFire);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &AIpvmultiCharacter::StartFire);
 	}
 	else
 	{
@@ -121,7 +121,7 @@ void AIpvmultiCharacter::OnRep_CurrentHealth()
 	
 }
 
-void AIpvmultiCharacter::OnHealthUpdate()
+void AIpvmultiCharacter::OnHealthUpdate_Implementation()
 {
 	//Client-specific functionality
 	if (IsLocallyControlled())
