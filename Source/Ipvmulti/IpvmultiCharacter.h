@@ -1,12 +1,15 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
+
+// --- AÑADIDO PARA MUNICIÓN Y UI ---
+#include "AmmoUI.h"
+// --- FIN DE LO AÑADIDO ---
+
 #include "Projectile.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "IpvmultiCharacter.generated.h"
-
 
 class USpringArmComponent;
 class UCameraComponent;
@@ -19,122 +22,138 @@ DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 UCLASS(config=Game)
 class AIpvmultiCharacter : public ACharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
-	/** Camera boom positioning the camera behind the character */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-	USpringArmComponent* CameraBoom;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
+    USpringArmComponent* CameraBoom;
 
-	/** Follow camera */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
-	UCameraComponent* FollowCamera;
-	
-	/** MappingContext */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputMappingContext* DefaultMappingContext;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
+    UCameraComponent* FollowCamera;
 
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* JumpAction;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputMappingContext* DefaultMappingContext;
 
-	/** Move Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* MoveAction;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* JumpAction;
 
-	/** Look Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* LookAction;
-	
-	/** Fire Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* FireAction;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* MoveAction;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* LookAction;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* FireAction;
 
 public:
-	AIpvmultiCharacter();
-	/** Property replication */
-	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	
+    AIpvmultiCharacter();
+    void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+    /** Pide al servidor restaurar la munición. */
+    UFUNCTION(Server, Reliable)
+    void ServerRestoreAmmo();
 
 protected:
+    void Move(const FInputActionValue& Value);
+    void Look(const FInputActionValue& Value);
 
-	/** Called for movement input */
-	void Move(const FInputActionValue& Value);
+    // --- SECCIÓN DE DISPARO (MODIFICADA Y UNIFICADA) ---
 
-	/** Called for looking input */
-	void Look(const FInputActionValue& Value);
-	
-	UPROPERTY(EditDefaultsOnly, Category="Gameplay|Projectile")
-	TSubclassOf<class AProjectile> ProjectileClass;
- 
-	/** Delay between shots in seconds. Used to control fire rate for your test projectile, but also to prevent an overflow of server functions from binding SpawnProjectile directly to input.*/
-	UPROPERTY(EditDefaultsOnly, Category="Gameplay")
-	float FireRate;
- 
-	/** If true, you are in the process of firing projectiles. */
-	bool bIsFiringWeapon;
- 
-	/** Function for beginning weapon fire.*/
-	UFUNCTION(BlueprintCallable, Category="Gameplay")
-	void StartFire();
- 
-	/** Function for ending weapon fire. Once this is called, the player can use StartFire again.*/
-	UFUNCTION(BlueprintCallable, Category = "Gameplay")
-	void StopFire();
- 
-	/** Server function for spawning projectiles.*/
-	UFUNCTION(Server, Reliable)
-	void HandleFire();
- 
-	/** A timer handle used for providing the fire rate delay in-between spawns.*/
-	FTimerHandle FiringTimer;
-			
+    UPROPERTY(EditDefaultsOnly, Category="Gameplay|Projectile")
+    TSubclassOf<class AProjectile> ProjectileClass;
+
+    UPROPERTY(EditDefaultsOnly, Category="Gameplay")
+    float FireRate;
+
+    bool bIsFiringWeapon;
+
+    /** Lógica de disparo que comprueba la munición antes de proceder. */
+    UFUNCTION(BlueprintCallable, Category = "Gameplay")
+    void TryFire();
+
+    /** Detiene la ráfaga de disparo. */
+    UFUNCTION() // No necesita ser BlueprintCallable si solo lo usa el timer
+    void StopFire();
+
+    /** Servidor: consume munición e instancia el proyectil. */
+    UFUNCTION(Server, Reliable)
+    void HandleFire();
+
+    FTimerHandle FiringTimer;
+
+    // --- FIN DE SECCIÓN DE DISPARO ---
+
+
+    // --- AÑADIDO PARA MUNICIÓN Y UI ---
+
+    /** Munición máxima */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+    int32 MaxAmmo;
+
+    /** Munición actual (replicada a todos los clientes). */
+    UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    int32 CurrentAmmo;
+
+    /** Clase de Widget a usar para la munición. Se asigna en el Editor. */
+    UPROPERTY(EditDefaultsOnly, Category="UI")
+    TSubclassOf<UUserWidget> AmmoWidgetClass;
+
+    /** Instancia del widget de munición creado. */
+    UPROPERTY()
+    UAmmoUI* AmmoWidgetInstance;
+
+    /** Notificador que se llama cuando CurrentAmmo cambia. */
+    UFUNCTION()
+    void OnRep_Ammo();
+
+    // -- YA NO SE NECESITA ServerConsumeAmmo, la lógica está en HandleFire --
+
+    // --- FIN DE LO AÑADIDO ---
+
 
 protected:
-
-	virtual void NotifyControllerChanged() override;
-
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    virtual void NotifyControllerChanged() override;
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    virtual void BeginPlay() override;
 
 public:
-	/** Returns CameraBoom subobject **/
-	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-	/** Returns FollowCamera subobject **/
-	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+    FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+    FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
-	/** Getter for Max Health.*/
-	UFUNCTION(BlueprintPure, Category="Health")
-	FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
- 
-	/** Getter for Current Health.*/
-	UFUNCTION(BlueprintPure, Category="Health")
-	FORCEINLINE float GetCurrentHealth() const { return CurrentHealth; }
- 
-	/** Setter for Current Health. Clamps the value between 0 and MaxHealth and calls OnHealthUpdate. Should only be called on the server.*/
-	UFUNCTION(BlueprintCallable, Category="Health")
-	void SetCurrentHealth(float healthValue);
- 
-	/** Event for taking damage. Overridden from APawn.*/
-	UFUNCTION(BlueprintCallable, Category = "Health")
-	float TakeDamage( float DamageTaken, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser ) override;
- 
+    // --- SECCIÓN DE VIDA (CÓDIGO ORIGINAL CONSERVADO CON MEJORAS) ---
+    UFUNCTION(BlueprintPure, Category="Health")
+    FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
 
+    UFUNCTION(BlueprintPure, Category="Health")
+    FORCEINLINE float GetCurrentHealth() const { return CurrentHealth; }
 
+    UFUNCTION(BlueprintCallable, Category="Health")
+    void SetCurrentHealth(float healthValue);
+
+    // ✨ CAMBIO IMPORTANTE: Añadido "override" para mayor seguridad.
+    UFUNCTION(BlueprintCallable, Category = "Health")
+    float TakeDamage( float DamageTaken, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser ) override;
 
 protected:
-	/** The player's maximum health. This is the highest value of their health can be. This value is a value of the player's health, which starts at when spawned.*/
-	UPROPERTY(EditDefaultsOnly, Category = "Health")
-	float MaxHealth;
- 
-	/** The player's current health. When reduced to 0, they are considered dead.*/
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth)
-	float CurrentHealth;
- 
-	/** RepNotify for changes made to current health.*/
-	UFUNCTION()
-	void OnRep_CurrentHealth();
+    UPROPERTY(EditDefaultsOnly, Category = "Health")
+    float MaxHealth;
 
-	/** Response to health being updated. Called on the server immediately after modification, and on clients in response to a RepNotify*/
-	UFUNCTION(BlueprintNativeEvent, Category="Health")
-	void OnHealthUpdate();
+    UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth)
+    float CurrentHealth;
+
+    UFUNCTION()
+    void OnRep_CurrentHealth();
+
+    UFUNCTION(BlueprintNativeEvent, Category="Health")
+    void OnHealthUpdate();
+    // --- FIN DE SECCIÓN DE VIDA ---
+
+
+    // --- AÑADIDO PARA MUNICIÓN Y UI ---
+    UFUNCTION(BlueprintPure, Category="Combat")
+    FORCEINLINE int32 GetCurrentAmmo() const { return CurrentAmmo; }
+
+    UFUNCTION(BlueprintPure, Category="Combat")
+    FORCEINLINE int32 GetMaxAmmo() const { return MaxAmmo; }
+    // --- FIN DE LO AÑADIDO ---
 };
-
