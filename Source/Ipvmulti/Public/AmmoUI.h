@@ -6,7 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "AmmoUI.generated.h"
 
-// Forward declaration para evitar includes circulares
+
 class UTextBlock;
 
 UCLASS()
@@ -16,18 +16,14 @@ class IPVMULTI_API UAmmoUI : public UUserWidget
 
 public:
 	/**
-	 * Actualiza el texto de munición en el widget.
-	 * @param CurrentAmmo La munición actual a mostrar.
-	 * @param MaxAmmo La munición máxima a mostrar.
+	
+	 * @param CurrentAmmo 
+	 * @param MaxAmmo 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void UpdateAmmoText(int32 CurrentAmmo, int32 MaxAmmo);
 
 protected:
-	/**
-	 * El componente de texto que muestra la munición.
-	 * DEBE llamarse "AmmoText" en el Blueprint del Widget y estar marcado como variable.
-	 */
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* AmmoText;
 };

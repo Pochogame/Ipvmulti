@@ -1,14 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// IpvmultiCharacter.h
 #pragma once
 
-// --- AÑADIDO PARA MUNICIÓN Y UI ---
-#include "AmmoUI.h"
-// --- FIN DE LO AÑADIDO ---
-
-#include "Projectile.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Logging/LogMacros.h"
 #include "IpvmultiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -17,19 +11,24 @@ class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 
+class UAmmoUI;          // Forward declare para tu widget
+class UUserWidget;
+
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
 UCLASS(config=Game)
-class AIpvmultiCharacter : public ACharacter
+class IPVMULTI_API AIpvmultiCharacter : public ACharacter
 {
     GENERATED_BODY()
 
+    /** Cámara */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
     USpringArmComponent* CameraBoom;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
     UCameraComponent* FollowCamera;
 
+    /** Input */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
     UInputMappingContext* DefaultMappingContext;
 
@@ -47,18 +46,18 @@ class AIpvmultiCharacter : public ACharacter
 
 public:
     AIpvmultiCharacter();
-    void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-    /** Pide al servidor restaurar la munición. */
+    /** RPC para restaurar munición */
     UFUNCTION(Server, Reliable)
     void ServerRestoreAmmo();
 
 protected:
+    // Movimiento / mirada
     void Move(const FInputActionValue& Value);
     void Look(const FInputActionValue& Value);
 
-    // --- SECCIÓN DE DISPARO (MODIFICADA Y UNIFICADA) ---
-
+    // Proyectil
     UPROPERTY(EditDefaultsOnly, Category="Gameplay|Projectile")
     TSubclassOf<class AProjectile> ProjectileClass;
 
@@ -67,74 +66,64 @@ protected:
 
     bool bIsFiringWeapon;
 
-    /** Lógica de disparo que comprueba la munición antes de proceder. */
+    /** Disparo (cliente llama esto) */
     UFUNCTION(BlueprintCallable, Category = "Gameplay")
     void TryFire();
 
-    /** Detiene la ráfaga de disparo. */
-    UFUNCTION() // No necesita ser BlueprintCallable si solo lo usa el timer
+    /** Detener ráfaga */
+    UFUNCTION()
     void StopFire();
 
-    /** Servidor: consume munición e instancia el proyectil. */
+    /** Servidor: instancia proyectil y consume muni */
     UFUNCTION(Server, Reliable)
     void HandleFire();
 
     FTimerHandle FiringTimer;
 
-    // --- FIN DE SECCIÓN DE DISPARO ---
-
-
-    // --- AÑADIDO PARA MUNICIÓN Y UI ---
-
-    /** Munición máxima */
+    // Munición
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
     int32 MaxAmmo;
 
-    /** Munición actual (replicada a todos los clientes). */
     UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     int32 CurrentAmmo;
 
-    /** Clase de Widget a usar para la munición. Se asigna en el Editor. */
+    // Widget UI
     UPROPERTY(EditDefaultsOnly, Category="UI")
     TSubclassOf<UUserWidget> AmmoWidgetClass;
 
-    /** Instancia del widget de munición creado. */
     UPROPERTY()
     UAmmoUI* AmmoWidgetInstance;
 
-    /** Notificador que se llama cuando CurrentAmmo cambia. */
+    // Game Over widget
+    UPROPERTY(EditDefaultsOnly, Category="UI")
+    TSubclassOf<UUserWidget> GameOverWidgetClass;
+
+    UPROPERTY()
+    UUserWidget* GameOverWidgetInstance;
+
+    void HandleDeath();
+
+
     UFUNCTION()
     void OnRep_Ammo();
 
-    // -- YA NO SE NECESITA ServerConsumeAmmo, la lógica está en HandleFire --
-
-    // --- FIN DE LO AÑADIDO ---
-
-
-protected:
+    // Funciones UE overrides
     virtual void NotifyControllerChanged() override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
     virtual void BeginPlay() override;
 
 public:
-    FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-    FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+    // Getters
+    FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+    FORCEINLINE UCameraComponent*   GetFollowCamera() const { return FollowCamera; }
 
-    // --- SECCIÓN DE VIDA (CÓDIGO ORIGINAL CONSERVADO CON MEJORAS) ---
-    UFUNCTION(BlueprintPure, Category="Health")
-    FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+    UFUNCTION(BlueprintPure, Category="Combat")
+    FORCEINLINE int32 GetCurrentAmmo() const { return CurrentAmmo; }
 
-    UFUNCTION(BlueprintPure, Category="Health")
-    FORCEINLINE float GetCurrentHealth() const { return CurrentHealth; }
+    UFUNCTION(BlueprintPure, Category="Combat")
+    FORCEINLINE int32 GetMaxAmmo() const { return MaxAmmo; }
 
-    UFUNCTION(BlueprintCallable, Category="Health")
-    void SetCurrentHealth(float healthValue);
-
-    // ✨ CAMBIO IMPORTANTE: Añadido "override" para mayor seguridad.
-    UFUNCTION(BlueprintCallable, Category = "Health")
-    float TakeDamage( float DamageTaken, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser ) override;
-
-protected:
+    // Salud
     UPROPERTY(EditDefaultsOnly, Category = "Health")
     float MaxHealth;
 
@@ -146,14 +135,24 @@ protected:
 
     UFUNCTION(BlueprintNativeEvent, Category="Health")
     void OnHealthUpdate();
-    // --- FIN DE SECCIÓN DE VIDA ---
 
+    UFUNCTION(BlueprintCallable, Category = "Health")
+    void SetCurrentHealth(float healthValue);
 
-    // --- AÑADIDO PARA MUNICIÓN Y UI ---
-    UFUNCTION(BlueprintPure, Category="Combat")
-    FORCEINLINE int32 GetCurrentAmmo() const { return CurrentAmmo; }
+    virtual float TakeDamage(float DamageTaken, struct FDamageEvent const& DamageEvent, 
+                             AController* EventInstigator, AActor* DamageCauser) override;
 
-    UFUNCTION(BlueprintPure, Category="Combat")
-    FORCEINLINE int32 GetMaxAmmo() const { return MaxAmmo; }
-    // --- FIN DE LO AÑADIDO ---
+    UFUNCTION(BlueprintPure, Category="Health")
+    FORCEINLINE float GetCurrentHealth() const { return CurrentHealth; }
+
+    UFUNCTION(BlueprintPure, Category="Health")
+    FORCEINLINE float GetMaxHealth() const { return MaxHealth; }
+
+    UFUNCTION(BlueprintCallable)
+    void OpenLobby();
+
+    UFUNCTION(BlueprintCallable)
+    void CallOpenLevel(const FString& IPAdress);
+
+    void CallClientTravel(const FString& IPAdress);
 };

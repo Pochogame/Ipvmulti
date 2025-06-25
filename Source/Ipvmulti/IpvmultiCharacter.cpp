@@ -1,81 +1,74 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// IpvmultiCharacter.cpp
 #include "IpvmultiCharacter.h"
-#include "Engine/LocalPlayer.h"
-#include "Camera/CameraComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "GameFramework/Controller.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputActionValue.h"
-#include "Net/UnrealNetwork.h"
-#include "Engine/Engine.h"
 #include "AmmoUI.h"
 #include "Blueprint/UserWidget.h"
-// Asegúrate de incluir Projectile.h si no está ya en tu PCH
+#include "EnhancedInputSubsystems.h"
+#include "EnhancedInputComponent.h"
+#include "InputActionValue.h"
 #include "Projectile.h"
+#include "Net/UnrealNetwork.h"
+#include "Engine/Engine.h"
+#include "Camera/CameraComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/Controller.h"
+#include "Kismet/GameplayStatics.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/PlayerController.h"
 
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 AIpvmultiCharacter::AIpvmultiCharacter()
 {
-    GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-       
-    bUseControllerRotationPitch = false;
-    bUseControllerRotationYaw = false;
-    bUseControllerRotationRoll = false;
-
-    GetCharacterMovement()->bOrientRotationToMovement = true;  
-    GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+    // Colisión y movimiento
+    GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
+    bUseControllerRotationPitch = bUseControllerRotationYaw = bUseControllerRotationRoll = false;
+    GetCharacterMovement()->bOrientRotationToMovement = true;
+    GetCharacterMovement()->RotationRate = FRotator(0,500,0);
     GetCharacterMovement()->JumpZVelocity = 700.f;
     GetCharacterMovement()->AirControl = 0.35f;
     GetCharacterMovement()->MaxWalkSpeed = 500.f;
-    GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
     GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-    GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
-    CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+    // Cámara
+    CameraBoom = CreateDefaultSubobject<USpringArmComponent>("CameraBoom");
     CameraBoom->SetupAttachment(RootComponent);
-    CameraBoom->TargetArmLength = 400.0f;  
-    CameraBoom->bUsePawnControlRotation = true; 
+    CameraBoom->TargetArmLength = 400.f;
+    CameraBoom->bUsePawnControlRotation = true;
+    FollowCamera = CreateDefaultSubobject<UCameraComponent>("FollowCamera");
+    FollowCamera->SetupAttachment(CameraBoom);
 
-    FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-    FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-    FollowCamera->bUsePawnControlRotation = false;
-
-    // --- INICIALIZACIÓN DE VARIABLES ---
-    MaxHealth = 100.0f;
+    // Salud
+    MaxHealth = 100.f;
     CurrentHealth = MaxHealth;
 
+    // Proyectil y fuego
     ProjectileClass = AProjectile::StaticClass();
     FireRate = 0.25f;
     bIsFiringWeapon = false;
 
-    // ✨ CORRECCIÓN: La munición máxima ahora es 5.
-    MaxAmmo = 5; 
+    // Munición
+    MaxAmmo = 5;
     CurrentAmmo = MaxAmmo;
+
+    bReplicates = true;
 }
 
 void AIpvmultiCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (IsLocallyControlled())
+    if (IsLocallyControlled() && AmmoWidgetClass)
     {
-        if (AmmoWidgetClass)
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
         {
-            APlayerController* FPC = Cast<APlayerController>(GetController());
-            if (FPC)
+            AmmoWidgetInstance = CreateWidget<UAmmoUI>(PC, AmmoWidgetClass);
+            if (AmmoWidgetInstance)
             {
-                 AmmoWidgetInstance = CreateWidget<UAmmoUI>(FPC, AmmoWidgetClass);
-                 if (AmmoWidgetInstance)
-                 {
-                    AmmoWidgetInstance->AddToViewport();
-                    AmmoWidgetInstance->UpdateAmmoText(GetCurrentAmmo(), GetMaxAmmo());
-                 }
+                AmmoWidgetInstance->AddToViewport();
+                AmmoWidgetInstance->UpdateAmmoText(CurrentAmmo, MaxAmmo);
             }
         }
     }
@@ -88,12 +81,60 @@ void AIpvmultiCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
     DOREPLIFETIME(AIpvmultiCharacter, CurrentAmmo);
 }
 
-// ... (El resto de funciones como NotifyControllerChanged, SetupPlayerInputComponent, Move, Look, etc., permanecen igual) ...
-// ... (Solo necesitas reemplazar las que se muestran a continuación) ...
+//////////////////////////////////////////////////////////////////////////
+// Input
 
-// ====================================================================================
-//                             SECCIÓN DE VIDA Y DAÑO
-// ====================================================================================
+void AIpvmultiCharacter::NotifyControllerChanged()
+{
+    Super::NotifyControllerChanged();
+
+    if (APlayerController* PC = Cast<APlayerController>(Controller))
+    {
+        if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+            ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+        {
+            Subsystem->AddMappingContext(DefaultMappingContext, 0);
+        }
+    }
+}
+
+void AIpvmultiCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+    if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        EIC->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+        EIC->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+        EIC->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AIpvmultiCharacter::Move);
+        EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &AIpvmultiCharacter::Look);
+        EIC->BindAction(FireAction, ETriggerEvent::Started, this, &AIpvmultiCharacter::TryFire);
+    }
+}
+
+void AIpvmultiCharacter::Move(const FInputActionValue& Value)
+{
+    FVector2D MV = Value.Get<FVector2D>();
+    if (Controller)
+    {
+        const FRotator YawRot(0, Controller->GetControlRotation().Yaw, 0);
+        AddMovementInput(FRotationMatrix(YawRot).GetUnitAxis(EAxis::X), MV.Y);
+        AddMovementInput(FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y), MV.X);
+    }
+}
+
+void AIpvmultiCharacter::Look(const FInputActionValue& Value)
+{
+    FVector2D LV = Value.Get<FVector2D>();
+    if (Controller)
+    {
+        AddControllerYawInput(LV.X);
+        AddControllerPitchInput(LV.Y);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Salud
 
 void AIpvmultiCharacter::OnRep_CurrentHealth()
 {
@@ -102,83 +143,83 @@ void AIpvmultiCharacter::OnRep_CurrentHealth()
 
 void AIpvmultiCharacter::OnHealthUpdate_Implementation()
 {
-    // Esta lógica de mensajes está bien, la dejamos como está.
     if (IsLocallyControlled())
     {
-       FString healthMessage = FString::Printf(TEXT("You now have %f health remaining."), CurrentHealth);
-       GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, healthMessage);
-
-       if (CurrentHealth <= 0)
-       {
-          FString deathMessage = FString::Printf(TEXT("You have been killed."));
-          GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, deathMessage);
-          // Aquí podrías añadir lógica para deshabilitar al jugador, etc.
-       }
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue,
+            FString::Printf(TEXT("Health: %f"), CurrentHealth));
+        if (CurrentHealth <= 0)
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("DEAD"));
+    }
+    if (HasAuthority())
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue,
+            FString::Printf(TEXT("%s health: %f"), *GetName(), CurrentHealth));
     }
 
-    if (GetLocalRole() == ROLE_Authority)
+    if (CurrentHealth <= 0.f)
     {
-       FString healthMessage = FString::Printf(TEXT("%s now has %f health remaining."), *GetFName().ToString(), CurrentHealth);
-       GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, healthMessage);
+        HandleDeath();
     }
 }
 
 void AIpvmultiCharacter::SetCurrentHealth(float healthValue)
 {
-    if (GetLocalRole() == ROLE_Authority)
+    if (HasAuthority())
     {
-       CurrentHealth = FMath::Clamp(healthValue, 0.f, MaxHealth);
-       OnHealthUpdate();
+        CurrentHealth = FMath::Clamp(healthValue, 0.f, MaxHealth);
+        OnHealthUpdate();
     }
 }
 
-// ✨ CORRECCIÓN IMPORTANTE: Lógica de TakeDamage arreglada.
-float AIpvmultiCharacter::TakeDamage(float DamageTaken, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float AIpvmultiCharacter::TakeDamage(float DamageTaken, FDamageEvent const& DE, 
+                                     AController* I, AActor* C)
 {
-    // Llama a la función base primero.
-    float ActualDamage = Super::TakeDamage(DamageTaken, DamageEvent, EventInstigator, DamageCauser);
-    
-    // Solo aplica el daño si es mayor que cero.
-    if (ActualDamage > 0.0f)
-    {
-        // La vida solo debe cambiar en el servidor.
-        if (GetLocalRole() == ROLE_Authority)
-        {
-            SetCurrentHealth(CurrentHealth - ActualDamage);
-        }
-    }
-
-    // Devuelve el daño que realmente se aplicó.
-    return ActualDamage;
+    float Applied = Super::TakeDamage(DamageTaken, DE, I, C);
+    if (Applied > 0.f && HasAuthority())
+        SetCurrentHealth(CurrentHealth - Applied);
+    return Applied;
 }
 
+void AIpvmultiCharacter::OpenLobby()
+{
+    UWorld* World = GetWorld();
+    if (!World) return;
+    World -> ServerTravel("Game/ThirdPerson/Maps/Lobby.Lobby?listen");
+}
 
-// ====================================================================================
-//                         SECCIÓN DE MUNICIÓN Y DISPARO
-// ====================================================================================
+void AIpvmultiCharacter::CallOpenLevel(const FString& IPAdress)
+{
+    UGameplayStatics::OpenLevel(this, *IPAdress);
+}
+
+void AIpvmultiCharacter::CallClientTravel(const FString& IPAdress)
+{
+    APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+    if (PlayerController)
+    {
+        PlayerController->ClientTravel(IPAdress,TRAVEL_Absolute);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Munición y disparo
 
 void AIpvmultiCharacter::OnRep_Ammo()
 {
     if (AmmoWidgetInstance)
-    {
         AmmoWidgetInstance->UpdateAmmoText(CurrentAmmo, MaxAmmo);
-    }
 }
 
 void AIpvmultiCharacter::ServerRestoreAmmo_Implementation()
 {
     CurrentAmmo = MaxAmmo;
-    OnRep_Ammo(); // Llama al RepNotify en el servidor para actualizar su UI si la tuviera.
+    OnRep_Ammo();
 }
 
 void AIpvmultiCharacter::TryFire()
 {
-    // Chequeo en el cliente para respuesta inmediata y evitar enviar RPCs innecesarios.
     if (!bIsFiringWeapon && CurrentAmmo > 0)
-    {
-        // Llama a la función del servidor para que se encargue de la lógica real.
         HandleFire();
-    }
 }
 
 void AIpvmultiCharacter::StopFire()
@@ -186,32 +227,70 @@ void AIpvmultiCharacter::StopFire()
     bIsFiringWeapon = false;
 }
 
-// ✨ CORRECCIÓN: Lógica de disparo y munición unificada y simplificada.
+
+
 void AIpvmultiCharacter::HandleFire_Implementation()
 {
-    // Doble chequeo autoritativo en el servidor.
-    if (!bIsFiringWeapon && CurrentAmmo > 0)
+    // Doble chequeo en el servidor para asegurar que todo es válido
+    if (!bIsFiringWeapon && CurrentAmmo > 0 && ProjectileClass != nullptr)
     {
-       bIsFiringWeapon = true;
+        bIsFiringWeapon = true;
+        
+        CurrentAmmo--;
+        OnRep_Ammo();  
 
-       // 1. Consumir munición directamente aquí. No se necesita otra función RPC.
-       CurrentAmmo--;
-       // Llama al OnRep manualmente en el servidor para que se actualice de inmediato.
-       OnRep_Ammo(); 
+        // Spawn proyectil (con el chequeo de ProjectileClass añadido por seguridad)
+        FVector Loc = GetActorLocation() + GetActorForwardVector()*100 + GetActorUpVector()*50;
+        FRotator Rot = GetControlRotation(); // Usamos la rotación del control para que el proyectil vaya hacia donde miras.
+        
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.Instigator = GetInstigator();
 
-       // 2. Generar proyectil.
-       FVector spawnLocation = GetActorLocation() + ( GetActorRotation().Vector() * 100.0f ) + (GetActorUpVector() * 50.0f);
-       FRotator spawnRotation = GetActorRotation();
-       FActorSpawnParameters spawnParameters;
-       spawnParameters.Instigator = GetInstigator();
-       spawnParameters.Owner = this;
-       
-       if (ProjectileClass)
-       {
-          GetWorld()->SpawnActor<AProjectile>(ProjectileClass, spawnLocation, spawnRotation, spawnParameters);
-       }
+        GetWorld()->SpawnActor<AProjectile>(ProjectileClass, Loc, Rot, SpawnParams);
 
-       // 3. Iniciar el temporizador para poder volver a disparar.
-       GetWorld()->GetTimerManager().SetTimer(FiringTimer, this, &AIpvmultiCharacter::StopFire, FireRate, false);
+        // Iniciar el temporizador para poder volver a disparar
+        GetWorld()->GetTimerManager().SetTimer(FiringTimer, this, 
+            &AIpvmultiCharacter::StopFire, FireRate, false);
+    }
+    else
+    {
+        // Si por alguna razón la lógica falla (ej. sin munición), nos aseguramos de no quedar bloqueados
+        StopFire();
+    }
+}
+
+void AIpvmultiCharacter::HandleDeath()
+{
+    // 1) Ragdoll
+    if (USkeletalMeshComponent* Skel = GetMesh())
+    {
+        Skel->SetSimulatePhysics(true);
+        Skel->SetCollisionProfileName(TEXT("Ragdoll"));
+    }
+
+    // 2) Deshabilitar input
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        DisableInput(PC);
+    }
+
+    // 3) Ocultar UI existente (munición, healthbar, etc.)
+    if (AmmoWidgetInstance && AmmoWidgetInstance->IsInViewport())
+    {
+        AmmoWidgetInstance->RemoveFromParent();
+
+        // 4) Mostrar Game Over (solo en cliente local)
+        if (IsLocallyControlled() && GameOverWidgetClass)
+        {
+            if (APlayerController* PC = Cast<APlayerController>(GetController()))
+            {
+                GameOverWidgetInstance = CreateWidget<UUserWidget>(PC, GameOverWidgetClass);
+                if (GameOverWidgetInstance)
+                {
+                    GameOverWidgetInstance->AddToViewport();
+                }
+            }
+        }
     }
 }
