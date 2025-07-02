@@ -11,7 +11,7 @@ class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 
-class UAmmoUI;          // Forward declare para tu widget
+class UAmmoUI;         
 class UUserWidget;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -155,4 +155,7 @@ public:
     void CallOpenLevel(const FString& IPAdress);
 
     void CallClientTravel(const FString& IPAdress);
+
+    UPROPERTY(BlueprintReadOnly, Category="Gameplay")
+    bool bIsCarryingObjetive;
 };

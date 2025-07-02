@@ -255,7 +255,7 @@ void AIpvmultiCharacter::HandleFire_Implementation()
     }
     else
     {
-        // Si por alguna razón la lógica falla (ej. sin munición), nos aseguramos de no quedar bloqueados
+        
         StopFire();
     }
 }
