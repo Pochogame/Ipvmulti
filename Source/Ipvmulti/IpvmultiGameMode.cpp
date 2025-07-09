@@ -13,3 +13,12 @@ AIpvmultiGameMode::AIpvmultiGameMode()
 		DefaultPawnClass = PlayerPawnBPClass.Class;
 	}
 }
+
+void AIpvmultiGameMode::CompleteMission(APawn* Pawn)
+{
+	if (Pawn==nullptr) return;
+	Pawn->DisableInput(nullptr);
+	OnMissionCompleted(Pawn);
+
+	
+}
