@@ -3,6 +3,7 @@
 #include "Actors/ObjectiveZone.h"
 
 #include "Components/BoxComponent.h"
+#include "Components/DecalComponent.h"
 #include "Ipvmulti/IpvmultiCharacter.h"
 #include "Ipvmulti/IpvmultiGameMode.h"
 
@@ -16,6 +17,11 @@ AObjectiveZone::AObjectiveZone()
 	OverlapComponent->SetCollisionResponseToChannel(ECC_Pawn,ECR_Overlap);
 	RootComponent=OverlapComponent;
 	OverlapComponent->SetHiddenInGame(false);
+
+	DecalComp = CreateDefaultSubobject<UDecalComponent>(TEXT("DecalComp"));
+	DecalComp-> DecalSize=FVector(200);
+	DecalComp->SetupAttachment(RootComponent);
+	
 	
 	
 }

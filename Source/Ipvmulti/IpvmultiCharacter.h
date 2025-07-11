@@ -101,6 +101,12 @@ protected:
     UPROPERTY()
     UUserWidget* GameOverWidgetInstance;
 
+    UPROPERTY(EditDefaultsOnly, Category="UI")
+    TSubclassOf<UUserWidget>FoundItem;
+
+    UPROPERTY()
+    UUserWidget* FoundItemInstance;
+
     void HandleDeath();
 
 
