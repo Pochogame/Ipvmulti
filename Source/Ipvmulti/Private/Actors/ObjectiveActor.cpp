@@ -12,6 +12,7 @@
 // Sets default values
 AObjectiveActor::AObjectiveActor()
 {
+	bReplicates = true;
 	StaticMesh=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	StaticMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	RootComponent=StaticMesh;
